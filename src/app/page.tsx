@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type Post = {
   id: number
@@ -25,12 +25,26 @@ export default function Page() {
   const [savedIds, setSavedIds] = useState<number[]>([])
 
   useEffect(() => {
+    const controller = new AbortController()
+    const normalized = keyword.trim()
+
     async function fetchPosts() {
       try {
         setLoading(true)
         setError('')
 
-        const response = await fetch('/api/posts')
+        const params = new URLSearchParams()
+        if (normalized) {
+          params.set('tags', normalized)
+        }
+
+        const queryString = params.toString()
+        const url = queryString ? `/api/posts?${queryString}` : '/api/posts'
+
+        const response = await fetch(url, {
+          signal: controller.signal,
+        })
+
         if (!response.ok) {
           throw new Error('投稿一覧の取得に失敗しました')
         }
@@ -38,6 +52,10 @@ export default function Page() {
         const data: Post[] = await response.json()
         setPosts(data)
       } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          return
+        }
+
         console.error(err)
         setError('投稿を読み込めませんでした')
       } finally {
@@ -45,29 +63,13 @@ export default function Page() {
       }
     }
 
-    fetchPosts()
-  }, [])
+    const timeoutId = window.setTimeout(fetchPosts, 300)
 
-  const filteredPosts = useMemo(() => {
-    const normalized = keyword.trim().toLowerCase()
-    if (!normalized) {
-      return posts
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeoutId)
     }
-
-    return posts.filter((post) => {
-      const title = post.title?.toLowerCase() ?? ''
-      const source = post.source?.toLowerCase() ?? ''
-      const workName = post.work_name?.toLowerCase() ?? ''
-      const characterName = post.character_name?.toLowerCase() ?? ''
-
-      return (
-        title.includes(normalized) ||
-        source.includes(normalized) ||
-        workName.includes(normalized) ||
-        characterName.includes(normalized)
-      )
-    })
-  }, [posts, keyword])
+  }, [keyword])
 
   function toggleSave(postId: number) {
     setSavedIds((prev) =>
@@ -84,7 +86,7 @@ export default function Page() {
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             className="search-input"
-            placeholder="タイトル、作品、キャラ、出典で検索"
+            placeholder="Rule34 タグで検索 例: 2b white_hair"
           />
         </div>
       </header>
@@ -95,12 +97,16 @@ export default function Page() {
             <h2 className="section-title">人気タグ</h2>
             <div className="tag-list">
               {popularTags.map((tag) => (
-                <button key={tag} className="tag-chip">
+                <button
+                  key={tag}
+                  className="tag-chip"
+                  onClick={() => setKeyword(tag)}
+                >
                   #{tag}
                 </button>
               ))}
             </div>
-            <p className="side-note">今は見本です。あとで本物のタグ検索につなぎます。</p>
+            <p className="side-note">タグを押すか、検索欄に複数タグを半角スペース区切りで入れてください。</p>
           </section>
         </aside>
 
@@ -109,19 +115,21 @@ export default function Page() {
             <div>
               <h1 className="section-title">検索結果</h1>
               <p className="content-subtitle">
-                {loading ? '読み込み中...' : `${filteredPosts.length} 件の投稿`}
+                {loading
+                  ? '読み込み中...'
+                  : `${posts.length} 件の投稿${keyword.trim() ? ` ・ tags: ${keyword.trim()}` : ''}`}
               </p>
             </div>
           </div>
 
           {error ? <div className="notice error">{error}</div> : null}
           {loading ? <div className="notice">投稿を読み込んでいます</div> : null}
-          {!loading && !filteredPosts.length ? (
+          {!loading && !posts.length ? (
             <div className="notice">条件に合う投稿がありません</div>
           ) : null}
 
           <div className="post-grid">
-            {filteredPosts.map((post) => {
+            {posts.map((post) => {
               const isSaved = savedIds.includes(post.id)
               const sizeLabel =
                 post.width && post.height ? `${post.width}×${post.height}` : 'サイズ不明'
