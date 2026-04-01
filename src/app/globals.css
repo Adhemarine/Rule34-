@@ -19,7 +19,8 @@ a {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -45,6 +46,10 @@ input {
   align-items: center;
 }
 
+.topbar-search-wrap {
+  align-items: flex-start;
+}
+
 .logo,
 .home-button {
   border: 1px solid #3f3f46;
@@ -57,7 +62,13 @@ input {
   cursor: pointer;
 }
 
-.search-input {
+.search-stack {
+  flex: 1;
+  position: relative;
+}
+
+.search-input,
+.sort-select {
   width: 100%;
   background: #18181b;
   border: 1px solid #3f3f46;
@@ -69,6 +80,40 @@ input {
 
 .search-input::placeholder {
   color: #71717a;
+}
+
+.sort-select {
+  cursor: pointer;
+}
+
+.suggest-box {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  border: 1px solid #3f3f46;
+  border-radius: 18px;
+  background: #111114;
+  overflow: hidden;
+}
+
+.suggest-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid #27272a;
+  background: transparent;
+  color: #f4f4f5;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.suggest-item:last-child {
+  border-bottom: 0;
+}
+
+.suggest-item:hover {
+  background: #1a1a20;
 }
 
 .sidebar-input {
@@ -119,9 +164,8 @@ input {
   cursor: pointer;
 }
 
-.tag-chip-negative {
-  min-width: 34px;
-  text-align: center;
+.tag-chip-label {
+  cursor: default;
 }
 
 .cheatsheet-list {
@@ -169,11 +213,16 @@ input {
   position: relative;
 }
 
-.post-preview img {
+.post-thumb-media,
+.modal-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.modal-image {
+  height: auto;
 }
 
 .post-meta-badge {
@@ -303,12 +352,6 @@ input {
   background: #0f0f12;
 }
 
-.modal-image {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
 .modal-side {
   display: grid;
   gap: 14px;
@@ -336,6 +379,10 @@ input {
 .detail-tag-item {
   display: flex;
   gap: 6px;
+}
+
+.detail-tag-item-wrap {
+  flex-wrap: wrap;
 }
 
 .source-link {

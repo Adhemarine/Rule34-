@@ -49,13 +49,46 @@ const demoPosts = [
   },
 ]
 
+type SortMode = 'score_desc' | 'id_desc' | 'id_asc' | 'random'
+
+function getSortToken(sortMode: string | null): string {
+  if (sortMode === 'id_desc') return 'sort:id:desc'
+  if (sortMode === 'id_asc') return 'sort:id:asc'
+  if (sortMode === 'random') return 'sort:random'
+  return 'sort:score:desc'
+}
+
+function buildTagQuery(requestUrl: URL): string {
+  const parts: string[] = []
+
+  const tags = requestUrl.searchParams.get('tags')?.trim()
+  const rating = requestUrl.searchParams.get('rating')?.trim()
+  const minScore = requestUrl.searchParams.get('min_score')?.trim()
+  const minWidth = requestUrl.searchParams.get('min_width')?.trim()
+  const minHeight = requestUrl.searchParams.get('min_height')?.trim()
+  const uploader = requestUrl.searchParams.get('user')?.trim()
+  const sourceDomain = requestUrl.searchParams.get('source_domain')?.trim()
+  const sortMode = requestUrl.searchParams.get('sort')
+
+  if (tags) parts.push(tags)
+  if (rating && rating !== 'all') parts.push(`rating:${rating}`)
+  if (minScore) parts.push(`score:>=${minScore}`)
+  if (minWidth) parts.push(`width:>=${minWidth}`)
+  if (minHeight) parts.push(`height:>=${minHeight}`)
+  if (uploader) parts.push(`user:${uploader}`)
+  if (sourceDomain) parts.push(`sourcedomains:${sourceDomain}`)
+
+  parts.push(getSortToken(sortMode))
+
+  return parts.join(' ').trim()
+}
+
 async function fetchRule34Posts(request: Request) {
   const requestUrl = new URL(request.url)
-  const tags = requestUrl.searchParams.get('tags')?.trim() ?? ''
-  const limitParam = Number(requestUrl.searchParams.get('limit') ?? '30')
+  const limitParam = Number(requestUrl.searchParams.get('limit') ?? '60')
   const limit = Number.isFinite(limitParam)
     ? Math.min(Math.max(limitParam, 1), 100)
-    : 30
+    : 60
 
   const apiUrl = new URL('https://api.rule34.xxx/index.php')
   apiUrl.searchParams.set('page', 'dapi')
@@ -65,8 +98,9 @@ async function fetchRule34Posts(request: Request) {
   apiUrl.searchParams.set('limit', String(limit))
   apiUrl.searchParams.set('fields', 'tag_info')
 
-  if (tags) {
-    apiUrl.searchParams.set('tags', tags)
+  const tagQuery = buildTagQuery(requestUrl)
+  if (tagQuery) {
+    apiUrl.searchParams.set('tags', tagQuery)
   }
 
   const userId = process.env.RULE34_USER_ID
@@ -108,7 +142,7 @@ async function fetchRule34Posts(request: Request) {
 
     if (!posts.length) {
       console.error('[rule34 api] normalize returned 0 posts', {
-        tags,
+        tagQuery,
         payloadType: Array.isArray(payload) ? 'array' : typeof payload,
         sample: Array.isArray(payload) ? payload[0] : payload,
       })
@@ -129,16 +163,25 @@ export async function GET(request: Request) {
     return NextResponse.json(rule34Posts)
   }
 
+  const requestUrl = new URL(request.url)
+  const sortMode = requestUrl.searchParams.get('sort')
   const supabase = getSupabaseClient()
 
   if (!supabase) {
     return NextResponse.json(demoPosts)
   }
 
-  const { data, error } = await supabase
-    .from('posts')
-    .select('*')
-    .order('score', { ascending: false })
+  let query = supabase.from('posts').select('*')
+
+  if (sortMode === 'id_asc') {
+    query = query.order('id', { ascending: true })
+  } else if (sortMode === 'id_desc') {
+    query = query.order('id', { ascending: false })
+  } else {
+    query = query.order('score', { ascending: false })
+  }
+
+  const { data, error } = await query
 
   if (error) {
     return NextResponse.json(demoPosts)
