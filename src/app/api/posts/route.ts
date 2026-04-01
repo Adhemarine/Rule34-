@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseClient } from '@/lib/supabase/client'
+import { normalizeExternalPosts } from '@/lib/normalize-external-posts'
 
 const demoPosts = [
   {
@@ -40,7 +41,47 @@ const demoPosts = [
   },
 ]
 
+async function fetchExternalPosts() {
+  const sourceUrl = process.env.EXTERNAL_POSTS_URL
+
+  if (!sourceUrl) {
+    return null
+  }
+
+  try {
+    const response = await fetch(sourceUrl, {
+      headers: {
+        Accept: 'application/json',
+      },
+      next: {
+        revalidate: 300,
+      },
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    const payload = await response.json()
+    const posts = normalizeExternalPosts(payload)
+
+    if (!posts.length) {
+      return null
+    }
+
+    return posts
+  } catch {
+    return null
+  }
+}
+
 export async function GET() {
+  const externalPosts = await fetchExternalPosts()
+
+  if (externalPosts) {
+    return NextResponse.json(externalPosts)
+  }
+
   const supabase = getSupabaseClient()
 
   if (!supabase) {
