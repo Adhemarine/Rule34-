@@ -72,13 +72,13 @@ async function fetchRule34Posts(request: Request) {
     const response = await fetch(apiUrl.toString(), {
       headers: {
         Accept: 'application/json',
+        'User-Agent': 'rule34-plus-local-dev/0.1',
       },
-      next: {
-        revalidate: 300,
-      },
+      cache: 'no-store',
     })
 
     if (!response.ok) {
+      console.error('[rule34 api] bad status', response.status, response.statusText)
       return null
     }
 
@@ -88,19 +88,27 @@ async function fetchRule34Posts(request: Request) {
       payload &&
       typeof payload === 'object' &&
       'success' in payload &&
-      (payload as { success?: string | boolean }).success === false
+      (((payload as { success?: string | boolean }).success === false) ||
+        ((payload as { success?: string | boolean }).success === 'false'))
     ) {
+      console.error('[rule34 api] success=false payload', payload)
       return null
     }
 
     const posts = normalizeExternalPosts(payload)
 
     if (!posts.length) {
+      console.error('[rule34 api] normalize returned 0 posts', {
+        tags,
+        payloadType: Array.isArray(payload) ? 'array' : typeof payload,
+        sample: Array.isArray(payload) ? payload[0] : payload,
+      })
       return null
     }
 
     return posts
-  } catch {
+  } catch (error) {
+    console.error('[rule34 api] fetch failed', error)
     return null
   }
 }
