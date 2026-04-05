@@ -1,203 +1,441 @@
-import { NextResponse } from 'next/server'
-import { getSupabaseClient } from '@/lib/supabase/client'
-import { normalizeExternalPosts } from '@/lib/normalize-external-posts'
-
-const demoPosts = [
-  {
-    id: 1,
-    title: '2B alternate outfit',
-    image_url: 'https://placehold.co/600x800?text=2B',
-    download_url: 'https://placehold.co/600x800?text=2B',
-    source: 'Pixiv',
-    source_url: null,
-    work_name: 'NieR:Automata',
-    character_name: '2B',
-    rating: 'explicit',
-    score: 1280,
-    width: 1600,
-    height: 2400,
-    tags_by_type: {
-      artist: ['demo_artist'],
-      copyright: ['nier_automata'],
-      character: ['2b'],
-      general: ['white_hair', 'android'],
-      meta: ['demo_post'],
-    },
-    md5: null,
-  },
-  {
-    id: 2,
-    title: 'Rapi night scene',
-    image_url: 'https://placehold.co/600x800?text=Rapi',
-    download_url: 'https://placehold.co/600x800?text=Rapi',
-    source: 'Danbooru',
-    source_url: null,
-    work_name: 'NIKKE',
-    character_name: 'Rapi',
-    rating: 'questionable',
-    score: 943,
-    width: 1920,
-    height: 1080,
-    tags_by_type: {
-      artist: ['demo_artist'],
-      copyright: ['nikke'],
-      character: ['rapi'],
-      general: ['red_eyes', 'military'],
-      meta: ['demo_post'],
-    },
-    md5: null,
-  },
-]
-
-type SortMode = 'score_desc' | 'id_desc' | 'id_asc' | 'random'
-
-function getSortToken(sortMode: string | null): string {
-  if (sortMode === 'id_desc') return 'sort:id:desc'
-  if (sortMode === 'id_asc') return 'sort:id:asc'
-  if (sortMode === 'random') return 'sort:random'
-  return 'sort:score:desc'
+* {
+  box-sizing: border-box;
 }
 
-function buildTagQuery(requestUrl: URL): string {
-  const parts: string[] = []
-
-  const tags = requestUrl.searchParams.get('tags')?.trim()
-  const rating = requestUrl.searchParams.get('rating')?.trim()
-  const minScore = requestUrl.searchParams.get('min_score')?.trim()
-  const minWidth = requestUrl.searchParams.get('min_width')?.trim()
-  const minHeight = requestUrl.searchParams.get('min_height')?.trim()
-  const uploader = requestUrl.searchParams.get('user')?.trim()
-  const sourceDomain = requestUrl.searchParams.get('source_domain')?.trim()
-  const sortMode = requestUrl.searchParams.get('sort')
-
-  if (tags) parts.push(tags)
-  if (rating && rating !== 'all') parts.push(`rating:${rating}`)
-  if (minScore) parts.push(`score:>=${minScore}`)
-  if (minWidth) parts.push(`width:>=${minWidth}`)
-  if (minHeight) parts.push(`height:>=${minHeight}`)
-  if (uploader) parts.push(`user:${uploader}`)
-  if (sourceDomain) parts.push(`sourcedomains:${sourceDomain}`)
-
-  parts.push(getSortToken(sortMode))
-
-  return parts.join(' ').trim()
+html {
+  color-scheme: dark;
 }
 
-async function fetchRule34Posts(request: Request) {
-  const requestUrl = new URL(request.url)
-  const limitParam = Number(requestUrl.searchParams.get('limit') ?? '100')
-  const limit = Number.isFinite(limitParam)
-    ? Math.min(Math.max(limitParam, 1), 100)
-    : 100
-  const pidParam = Number(requestUrl.searchParams.get('pid') ?? '0')
-  const pid = Number.isFinite(pidParam)
-    ? Math.max(pidParam, 0)
-    : 0
-
-  const apiUrl = new URL('https://api.rule34.xxx/index.php')
-  apiUrl.searchParams.set('page', 'dapi')
-  apiUrl.searchParams.set('s', 'post')
-  apiUrl.searchParams.set('q', 'index')
-  apiUrl.searchParams.set('json', '1')
-  apiUrl.searchParams.set('limit', String(limit))
-  apiUrl.searchParams.set('pid', String(pid))
-  apiUrl.searchParams.set('fields', 'tag_info')
-
-  const tagQuery = buildTagQuery(requestUrl)
-  if (tagQuery) {
-    apiUrl.searchParams.set('tags', tagQuery)
-  }
-
-  const userId = process.env.RULE34_USER_ID
-  const apiKey = process.env.RULE34_API_KEY
-
-  if (userId && apiKey) {
-    apiUrl.searchParams.set('user_id', userId)
-    apiUrl.searchParams.set('api_key', apiKey)
-  }
-
-  try {
-    const response = await fetch(apiUrl.toString(), {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'rule34-plus-local-dev/0.1',
-      },
-      cache: 'no-store',
-    })
-
-    if (!response.ok) {
-      console.error('[rule34 api] bad status', response.status, response.statusText)
-      return null
-    }
-
-    const payload = await response.json()
-
-    if (
-      payload &&
-      typeof payload === 'object' &&
-      'success' in payload &&
-      (((payload as { success?: string | boolean }).success === false) ||
-        ((payload as { success?: string | boolean }).success === 'false'))
-    ) {
-      console.error('[rule34 api] success=false payload', payload)
-      return null
-    }
-
-    const posts = normalizeExternalPosts(payload)
-
-    if (!posts.length) {
-      console.error('[rule34 api] normalize returned 0 posts', {
-        tagQuery,
-        pid,
-        payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-        sample: Array.isArray(payload) ? payload[0] : payload,
-      })
-      return []
-    }
-
-    return posts
-  } catch (error) {
-    console.error('[rule34 api] fetch failed', error)
-    return null
-  }
+body {
+  margin: 0;
+  background: #0b0b0d;
+  color: #f4f4f5;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
-export async function GET(request: Request) {
-  const rule34Posts = await fetchRule34Posts(request)
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
-  if (rule34Posts !== null) {
-    return NextResponse.json(rule34Posts)
+button,
+input,
+select {
+  font: inherit;
+}
+
+.page-shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid #27272a;
+  background: rgba(11, 11, 13, 0.92);
+  backdrop-filter: blur(8px);
+}
+
+.topbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.logo,
+.home-button,
+.gear-button {
+  border: 1px solid #3f3f46;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  background: transparent;
+  color: #f4f4f5;
+  cursor: pointer;
+}
+
+.gear-button.active {
+  background: #27272a;
+}
+
+.search-stack {
+  flex: 1;
+  position: relative;
+}
+
+.search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.search-input,
+.sort-select {
+  width: 100%;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  color: #f4f4f5;
+  border-radius: 14px;
+  padding: 12px 14px;
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: #71717a;
+}
+
+.suggest-box {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border: 1px solid #3f3f46;
+  border-radius: 18px;
+  background: #111114;
+  overflow: hidden;
+}
+
+.suggest-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid #27272a;
+  background: transparent;
+  color: #f4f4f5;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.suggest-item:last-child {
+  border-bottom: 0;
+}
+
+.advanced-panel {
+  margin-top: 10px;
+  border: 1px solid #27272a;
+  border-radius: 18px;
+  padding: 12px;
+  background: #141418;
+}
+
+.advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.advanced-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #d4d4d8;
+}
+
+.advanced-field-wide {
+  grid-column: 1 / -1;
+}
+
+.main-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 16px;
+}
+
+.sidebar-card,
+.post-card,
+.modal-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 24px;
+}
+
+.sidebar-card {
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tag-list,
+.detail-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-chip {
+  border: 1px solid #3f3f46;
+  border-radius: 999px;
+  background: transparent;
+  color: #d4d4d8;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.tag-chip-label {
+  cursor: default;
+}
+
+.content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.content-subtitle {
+  margin: 6px 0 0;
+  color: #a1a1aa;
+  font-size: 14px;
+}
+
+.pager-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.post-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.post-card.clickable {
+  cursor: pointer;
+}
+
+.post-preview {
+  aspect-ratio: 3 / 4;
+  background: #27272a;
+  overflow: hidden;
+  position: relative;
+}
+
+.post-thumb-media,
+.modal-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.modal-image {
+  height: auto;
+}
+
+.post-meta-badge {
+  position: absolute;
+  top: 10px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(9, 9, 11, 0.72);
+  border: 1px solid #52525b;
+  font-size: 11px;
+}
+
+.post-meta-badge.left {
+  left: 10px;
+}
+
+.post-meta-badge.right {
+  right: 10px;
+}
+
+.post-footer {
+  position: absolute;
+  inset-inline: 10px;
+  bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #d4d4d8;
+}
+
+.post-body {
+  padding: 12px;
+}
+
+.post-body.compact {
+  display: grid;
+  gap: 10px;
+}
+
+.post-card-id {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+.button-row.triple .action-button {
+  flex: 1;
+}
+
+.action-button {
+  background: transparent;
+  color: #f4f4f5;
+  border: 1px solid #3f3f46;
+  border-radius: 14px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.action-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.action-button.active {
+  background: #27272a;
+  border-color: #71717a;
+}
+
+.notice {
+  border: 1px solid #3f3f46;
+  border-radius: 24px;
+  padding: 16px;
+  color: #d4d4d8;
+  margin-bottom: 12px;
+}
+
+.notice.error {
+  border-color: #7f1d1d;
+  background: rgba(127, 29, 29, 0.18);
+  color: #fecaca;
+}
+
+.side-note {
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.74);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 30;
+}
+
+.modal-card {
+  width: min(1180px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 20px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.2fr) minmax(280px, 0.8fr);
+  gap: 20px;
+}
+
+.modal-image-wrap {
+  border: 1px solid #27272a;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #0f0f12;
+}
+
+.modal-side {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-section {
+  border: 1px solid #27272a;
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.detail-section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detail-meta-list {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: #d4d4d8;
+}
+
+.detail-tag-item {
+  display: flex;
+  gap: 6px;
+}
+
+.tag-action-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.tag-action-menu {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #3f3f46;
+  border-radius: 14px;
+  background: #111114;
+}
+
+.tag-action-item {
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  background: transparent;
+  color: #f4f4f5;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-link {
+  color: #93c5fd;
+}
+
+@media (max-width: 900px) {
+  .main-grid {
+    grid-template-columns: 1fr;
   }
 
-  const requestUrl = new URL(request.url)
-  const sortMode = requestUrl.searchParams.get('sort')
-  const pidParam = Number(requestUrl.searchParams.get('pid') ?? '0')
-  const pid = Number.isFinite(pidParam) ? Math.max(pidParam, 0) : 0
-  const limitParam = Number(requestUrl.searchParams.get('limit') ?? '100')
-  const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 100) : 100
-  const supabase = getSupabaseClient()
-
-  if (!supabase) {
-    return NextResponse.json(demoPosts)
+  .modal-grid,
+  .advanced-grid {
+    grid-template-columns: 1fr;
   }
 
-  let query = supabase.from('posts').select('*')
-
-  if (sortMode === 'id_asc') {
-    query = query.order('id', { ascending: true })
-  } else if (sortMode === 'id_desc') {
-    query = query.order('id', { ascending: false })
-  } else {
-    query = query.order('score', { ascending: false })
+  .topbar-inner {
+    flex-wrap: wrap;
   }
-
-  query = query.range(pid * limit, pid * limit + limit - 1)
-
-  const { data, error } = await query
-
-  if (error) {
-    return NextResponse.json(demoPosts)
-  }
-
-  return NextResponse.json(data)
 }
