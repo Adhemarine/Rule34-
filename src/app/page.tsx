@@ -6,7 +6,19 @@ import type { ExternalPost } from '@/lib/normalize-external-posts'
 
 type SortMode = 'score_desc' | 'id_desc' | 'id_asc' | 'random'
 
+type TagMenuState = {
+  key: string
+  tag: string
+} | null
+
+type TagSection = {
+  key: keyof ExternalPost['tags_by_type']
+  label: string
+  tags: string[]
+}
+
 const PAGE_SIZE = 100
+const BLOCKLIST_STORAGE_KEY = 'rule34-plus-blocked-tags'
 
 const quickSearches = [
   '2b',
@@ -77,6 +89,42 @@ function getPreviewTags(post: ExternalPost): string[] {
   return [...new Set(merged)].slice(0, 8)
 }
 
+function getAllTags(post: ExternalPost): string[] {
+  const merged = [
+    ...post.tags_by_type.artist,
+    ...post.tags_by_type.copyright,
+    ...post.tags_by_type.character,
+    ...post.tags_by_type.general,
+    ...post.tags_by_type.meta,
+  ]
+
+  return [...new Set(merged)]
+}
+
+function getTagSections(post: ExternalPost): TagSection[] {
+  const sections: TagSection[] = [
+    { key: 'artist', label: 'Artist', tags: post.tags_by_type.artist },
+    { key: 'copyright', label: 'Copyright', tags: post.tags_by_type.copyright },
+    { key: 'character', label: 'Character', tags: post.tags_by_type.character },
+    { key: 'general', label: 'General', tags: post.tags_by_type.general },
+    { key: 'meta', label: 'Meta', tags: post.tags_by_type.meta },
+  ]
+
+  return sections.filter((section) => section.tags.length > 0)
+}
+
+function tokenizeTags(value: string): string[] {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+}
+
+function stringifyTags(tokens: string[]): string {
+  return [...new Set(tokens)].join(' ').trim()
+}
+
 export default function Page() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -97,6 +145,18 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedPost, setSelectedPost] = useState<ExternalPost | null>(null)
+  const [activeTagMenu, setActiveTagMenu] = useState<TagMenuState>(null)
+  const [blockedTags, setBlockedTags] = useState<string[]>([])
+
+  const blockedTagsSet = useMemo(() => new Set(blockedTags), [blockedTags])
+
+  const visiblePosts = useMemo(
+    () =>
+      posts.filter((post) =>
+        getAllTags(post).every((tag) => !blockedTagsSet.has(tag)),
+      ),
+    [posts, blockedTagsSet],
+  )
 
   useEffect(() => {
     setSearchInput(currentTags)
@@ -104,7 +164,48 @@ export default function Page() {
 
   useEffect(() => {
     setSelectedPost(null)
+    setActiveTagMenu(null)
   }, [currentQueryString])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      const stored = window.localStorage.getItem(BLOCKLIST_STORAGE_KEY)
+
+      if (!stored) {
+        return
+      }
+
+      const parsed = JSON.parse(stored)
+
+      if (!Array.isArray(parsed)) {
+        return
+      }
+
+      setBlockedTags(
+        parsed
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => value.trim())
+          .filter(Boolean),
+      )
+    } catch (storageError) {
+      console.error(storageError)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.localStorage.setItem(
+      BLOCKLIST_STORAGE_KEY,
+      JSON.stringify(blockedTags),
+    )
+  }, [blockedTags])
 
   useEffect(() => {
     let cancelled = false
@@ -190,7 +291,7 @@ export default function Page() {
   }
 
   function handleGoNext() {
-    if (posts.length < PAGE_SIZE) return
+    if (visiblePosts.length < PAGE_SIZE) return
 
     replaceParams({
       pid: String(currentPid + 1),
@@ -208,10 +309,103 @@ export default function Page() {
     })
   }
 
+  function handleAddTag(tag: string) {
+    const nextTokens = tokenizeTags(currentTags).filter(
+      (token) => token !== tag && token !== `-${tag}`,
+    )
+
+    nextTokens.push(tag)
+
+    replaceParams({
+      tags: stringifyTags(nextTokens) || null,
+      pid: '0',
+    })
+
+    setActiveTagMenu(null)
+  }
+
+  function handleExcludeTag(tag: string) {
+    const nextTokens = tokenizeTags(currentTags).filter(
+      (token) => token !== tag && token !== `-${tag}`,
+    )
+
+    nextTokens.push(`-${tag}`)
+
+    replaceParams({
+      tags: stringifyTags(nextTokens) || null,
+      pid: '0',
+    })
+
+    setActiveTagMenu(null)
+  }
+
+  function handleSetTag(tag: string) {
+    replaceParams({
+      tags: tag,
+      pid: '0',
+    })
+
+    setActiveTagMenu(null)
+  }
+
+  async function handleCopyTag(tag: string) {
+    try {
+      await navigator.clipboard.writeText(tag)
+    } catch (clipboardError) {
+      console.error(clipboardError)
+    }
+
+    setActiveTagMenu(null)
+  }
+
+  function handleAddToBlocklist(tag: string) {
+    setBlockedTags((current) => {
+      if (current.includes(tag)) {
+        return current
+      }
+
+      return [...current, tag]
+    })
+
+    if (selectedPost && getAllTags(selectedPost).includes(tag)) {
+      setSelectedPost(null)
+    }
+
+    setActiveTagMenu(null)
+  }
+
+  function handleRemoveBlockedTag(tag: string) {
+    setBlockedTags((current) => current.filter((value) => value !== tag))
+  }
+
+  function handleOpenTagInNewTab(tag: string) {
+    const next = new URLSearchParams()
+    next.set('tags', tag)
+    next.set('limit', String(PAGE_SIZE))
+
+    if (currentSort !== 'score_desc') {
+      next.set('sort', currentSort)
+    }
+
+    window.open(`/?${next.toString()}`, '_blank', 'noopener,noreferrer')
+    setActiveTagMenu(null)
+  }
+
+  function handleToggleTagMenu(key: string, tag: string) {
+    setActiveTagMenu((current) => {
+      if (current?.key === key) {
+        return null
+      }
+
+      return { key, tag }
+    })
+  }
+
   const hasPrev = currentPid > 0
-  const hasNext = posts.length === PAGE_SIZE
-  const rangeStart = posts.length > 0 ? currentPid * PAGE_SIZE + 1 : 0
-  const rangeEnd = currentPid * PAGE_SIZE + posts.length
+  const hasNext = visiblePosts.length === PAGE_SIZE
+  const rangeStart = visiblePosts.length > 0 ? currentPid * PAGE_SIZE + 1 : 0
+  const rangeEnd = currentPid * PAGE_SIZE + visiblePosts.length
+  const isAllHiddenByBlocklist = posts.length > 0 && visiblePosts.length === 0
 
   return (
     <div className="page-shell">
@@ -287,6 +481,27 @@ export default function Page() {
           </div>
 
           <div className="sidebar-card">
+            <h2 className="section-title">ブロック中のタグ</h2>
+
+            {blockedTags.length === 0 ? (
+              <p className="side-note">まだありません</p>
+            ) : (
+              <div className="detail-tag-list">
+                {blockedTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    className="tag-chip"
+                    onClick={() => handleRemoveBlockedTag(tag)}
+                  >
+                    {tag} ×
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="sidebar-card">
             <h2 className="section-title">ページ送り確認点</h2>
             <p className="side-note">
               1ページ100件です。前へは pid が 1 以上で有効になります。次へは取得件数が100件ちょうどのときだけ有効にしています。
@@ -301,7 +516,7 @@ export default function Page() {
                 投稿一覧
               </h1>
               <p className="content-subtitle">
-                {posts.length > 0
+                {visiblePosts.length > 0
                   ? `${rangeStart}件目から${rangeEnd}件目`
                   : '表示できる投稿がありません'}
               </p>
@@ -330,12 +545,15 @@ export default function Page() {
 
           {loading ? <div className="notice">読み込み中です。</div> : null}
           {error ? <div className="notice error">{error}</div> : null}
-          {!loading && !error && posts.length === 0 ? (
+          {!loading && !error && visiblePosts.length === 0 && isAllHiddenByBlocklist ? (
+            <div className="notice">このページの投稿はブロックリストで非表示になっています。</div>
+          ) : null}
+          {!loading && !error && visiblePosts.length === 0 && !isAllHiddenByBlocklist ? (
             <div className="notice">検索結果は 0 件です。</div>
           ) : null}
 
           <div className="post-grid">
-            {posts.map((post) => (
+            {visiblePosts.map((post) => (
               <button
                 key={post.id}
                 type="button"
@@ -384,7 +602,10 @@ export default function Page() {
         <div className="modal-overlay" onClick={() => setSelectedPost(null)}>
           <div
             className="modal-card"
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              setActiveTagMenu(null)
+            }}
           >
             <div className="modal-header">
               <div>
@@ -450,16 +671,94 @@ export default function Page() {
                 <div className="detail-section">
                   <h3 className="detail-section-title">タグ</h3>
 
-                  <div className="detail-tag-list">
-                    {getPreviewTags(selectedPost).map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        className="tag-chip"
-                        onClick={() => handleApplyTag(tag)}
-                      >
-                        {tag}
-                      </button>
+                  <div className="modal-tag-sections">
+                    {getTagSections(selectedPost).map((section) => (
+                      <div key={section.key} className="modal-tag-group">
+                        <h4 className="detail-tag-group-title">{section.label}</h4>
+
+                        <div className="detail-tag-list">
+                          {section.tags.map((tag) => {
+                            const menuKey = `${section.key}:${tag}`
+                            const isOpen = activeTagMenu?.key === menuKey
+
+                            return (
+                              <div
+                                key={menuKey}
+                                className="tag-action-wrap"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  className="tag-chip"
+                                  onClick={() => handleToggleTagMenu(menuKey, tag)}
+                                >
+                                  {tag}
+                                </button>
+
+                                {isOpen ? (
+                                  <div className="tag-action-menu">
+                                    <button
+                                      type="button"
+                                      className="tag-action-item"
+                                      onClick={() => handleAddTag(tag)}
+                                    >
+                                      Add tag
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="tag-action-item"
+                                      onClick={() => handleExcludeTag(tag)}
+                                    >
+                                      Exclude tag
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="tag-action-item"
+                                      onClick={() => handleSetTag(tag)}
+                                    >
+                                      Set tag
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="tag-action-item"
+                                      onClick={() => handleCopyTag(tag)}
+                                    >
+                                      Copy tag
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="tag-action-item"
+                                      onClick={() => handleAddToBlocklist(tag)}
+                                    >
+                                      Add to blocklist
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="tag-action-item"
+                                      onClick={() => handleOpenTagInNewTab(tag)}
+                                    >
+                                      Open in new tab
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      className="tag-action-item"
+                                      onClick={() => setActiveTagMenu(null)}
+                                    >
+                                      Dismiss
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>

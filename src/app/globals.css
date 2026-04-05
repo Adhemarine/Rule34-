@@ -168,6 +168,40 @@ select {
   cursor: default;
 }
 
+.tag-action-wrap {
+  position: relative;
+  display: flex;
+}
+
+.tag-action-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 50;
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  padding: 8px;
+  border: 1px solid #3f3f46;
+  border-radius: 16px;
+  background: #111114;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+.tag-action-item {
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  background: transparent;
+  color: #f4f4f5;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tag-action-item:hover {
+  background: #1a1a20;
+}
+
 .cheatsheet-list {
   display: grid;
   gap: 8px;
@@ -285,6 +319,11 @@ select {
   cursor: pointer;
 }
 
+.action-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .action-button.active {
   background: #27272a;
   border-color: #71717a;
@@ -357,6 +396,16 @@ select {
   gap: 14px;
 }
 
+.modal-tag-sections {
+  display: grid;
+  gap: 14px;
+}
+
+.modal-tag-group {
+  display: grid;
+  gap: 10px;
+}
+
 .detail-section {
   border: 1px solid #27272a;
   border-radius: 18px;
@@ -367,6 +416,13 @@ select {
   margin: 0 0 10px;
   font-size: 13px;
   font-weight: 700;
+}
+
+.detail-tag-group-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e4e4e7;
 }
 
 .detail-meta-list {
