@@ -85,10 +85,14 @@ function buildTagQuery(requestUrl: URL): string {
 
 async function fetchRule34Posts(request: Request) {
   const requestUrl = new URL(request.url)
-  const limitParam = Number(requestUrl.searchParams.get('limit') ?? '60')
+  const limitParam = Number(requestUrl.searchParams.get('limit') ?? '100')
   const limit = Number.isFinite(limitParam)
     ? Math.min(Math.max(limitParam, 1), 100)
-    : 60
+    : 100
+  const pidParam = Number(requestUrl.searchParams.get('pid') ?? '0')
+  const pid = Number.isFinite(pidParam)
+    ? Math.max(pidParam, 0)
+    : 0
 
   const apiUrl = new URL('https://api.rule34.xxx/index.php')
   apiUrl.searchParams.set('page', 'dapi')
@@ -96,6 +100,7 @@ async function fetchRule34Posts(request: Request) {
   apiUrl.searchParams.set('q', 'index')
   apiUrl.searchParams.set('json', '1')
   apiUrl.searchParams.set('limit', String(limit))
+  apiUrl.searchParams.set('pid', String(pid))
   apiUrl.searchParams.set('fields', 'tag_info')
 
   const tagQuery = buildTagQuery(requestUrl)
@@ -139,16 +144,6 @@ async function fetchRule34Posts(request: Request) {
     }
 
     const posts = normalizeExternalPosts(payload)
-
-    if (!posts.length) {
-      console.error('[rule34 api] normalize returned 0 posts', {
-        tagQuery,
-        payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-        sample: Array.isArray(payload) ? payload[0] : payload,
-      })
-      return null
-    }
-
     return posts
   } catch (error) {
     console.error('[rule34 api] fetch failed', error)
@@ -159,13 +154,23 @@ async function fetchRule34Posts(request: Request) {
 export async function GET(request: Request) {
   const rule34Posts = await fetchRule34Posts(request)
 
-  if (rule34Posts) {
+  if (rule34Posts !== null) {
     return NextResponse.json(rule34Posts)
   }
 
   const requestUrl = new URL(request.url)
   const sortMode = requestUrl.searchParams.get('sort')
   const supabase = getSupabaseClient()
+
+  const limitParam = Number(requestUrl.searchParams.get('limit') ?? '100')
+  const limit = Number.isFinite(limitParam)
+    ? Math.min(Math.max(limitParam, 1), 100)
+    : 100
+
+  const pidParam = Number(requestUrl.searchParams.get('pid') ?? '0')
+  const pid = Number.isFinite(pidParam)
+    ? Math.max(pidParam, 0)
+    : 0
 
   if (!supabase) {
     return NextResponse.json(demoPosts)
@@ -181,11 +186,13 @@ export async function GET(request: Request) {
     query = query.order('score', { ascending: false })
   }
 
+  query = query.range(pid * limit, pid * limit + limit - 1)
+
   const { data, error } = await query
 
   if (error) {
     return NextResponse.json(demoPosts)
   }
 
-  return NextResponse.json(data)
+  return NextResponse.json(data ?? [])
 }
