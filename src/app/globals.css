@@ -248,15 +248,21 @@ select {
 }
 
 .post-thumb-media,
-.modal-image {
+.modal-image,
+.modal-video {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.modal-image {
+.modal-image,
+.modal-video {
   height: auto;
+}
+
+.modal-video {
+  background: #000;
 }
 
 .post-meta-badge {

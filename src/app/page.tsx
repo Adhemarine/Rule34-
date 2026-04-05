@@ -19,6 +19,8 @@ type TagSection = {
 
 const PAGE_SIZE = 100
 const BLOCKLIST_STORAGE_KEY = 'rule34-plus-blocked-tags'
+const VIDEO_URL_PATTERN = /\.(mp4|webm|m4v|mov)(?:[?#].*)?$/i
+const VIDEO_HOST_PATTERN = /api-cdn-mp4\.rule34\./i
 
 const quickSearches = [
   '2b',
@@ -125,6 +127,14 @@ function stringifyTags(tokens: string[]): string {
   return [...new Set(tokens)].join(' ').trim()
 }
 
+function isVideoUrl(url: string | null | undefined): boolean {
+  if (!url) {
+    return false
+  }
+
+  return VIDEO_URL_PATTERN.test(url) || VIDEO_HOST_PATTERN.test(url)
+}
+
 export default function Page() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -166,6 +176,22 @@ export default function Page() {
     setSelectedPost(null)
     setActiveTagMenu(null)
   }, [currentQueryString])
+
+  useEffect(() => {
+    if (!activeTagMenu || typeof document === 'undefined') {
+      return
+    }
+
+    function closeMenu() {
+      setActiveTagMenu(null)
+    }
+
+    document.addEventListener('click', closeMenu)
+
+    return () => {
+      document.removeEventListener('click', closeMenu)
+    }
+  }, [activeTagMenu])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -401,6 +427,16 @@ export default function Page() {
     })
   }
 
+  function handleOpenTagMenuFromEvent(
+    event: React.MouseEvent<HTMLElement>,
+    key: string,
+    tag: string,
+  ) {
+    event.preventDefault()
+    event.stopPropagation()
+    setActiveTagMenu({ key, tag })
+  }
+
   const hasPrev = currentPid > 0
   const hasNext = visiblePosts.length === PAGE_SIZE
   const rangeStart = visiblePosts.length > 0 ? currentPid * PAGE_SIZE + 1 : 0
@@ -562,12 +598,24 @@ export default function Page() {
                 style={{ padding: 0, textAlign: 'left' }}
               >
                 <div className="post-preview">
-                  <img
-                    className="post-thumb-media"
-                    src={post.image_url}
-                    alt={post.title}
-                    loading="lazy"
-                  />
+                  {isVideoUrl(post.image_url) ? (
+                    <video
+                      className="post-thumb-media"
+                      src={post.image_url}
+                      muted
+                      playsInline
+                      autoPlay
+                      loop
+                      preload="metadata"
+                    />
+                  ) : (
+                    <img
+                      className="post-thumb-media"
+                      src={post.image_url}
+                      alt={post.title}
+                      loading="lazy"
+                    />
+                  )}
 
                   <span className="post-meta-badge left">
                     {formatRating(post.rating)}
@@ -604,7 +652,6 @@ export default function Page() {
             className="modal-card"
             onClick={(event) => {
               event.stopPropagation()
-              setActiveTagMenu(null)
             }}
           >
             <div className="modal-header">
@@ -648,11 +695,24 @@ export default function Page() {
 
             <div className="modal-grid">
               <div className="modal-image-wrap">
-                <img
-                  className="modal-image"
-                  src={selectedPost.download_url}
-                  alt={selectedPost.title}
-                />
+                {isVideoUrl(selectedPost.download_url) ? (
+                  <video
+                    className="modal-image modal-video"
+                    src={selectedPost.download_url}
+                    poster={selectedPost.image_url}
+                    controls
+                    playsInline
+                    autoPlay
+                    loop
+                    preload="metadata"
+                  />
+                ) : (
+                  <img
+                    className="modal-image"
+                    src={selectedPost.download_url}
+                    alt={selectedPost.title}
+                  />
+                )}
               </div>
 
               <div className="modal-side">
@@ -690,13 +750,22 @@ export default function Page() {
                                 <button
                                   type="button"
                                   className="tag-chip"
-                                  onClick={() => handleToggleTagMenu(menuKey, tag)}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleToggleTagMenu(menuKey, tag)
+                                  }}
+                                  onContextMenu={(event) =>
+                                    handleOpenTagMenuFromEvent(event, menuKey, tag)
+                                  }
                                 >
                                   {tag}
                                 </button>
 
                                 {isOpen ? (
-                                  <div className="tag-action-menu">
+                                  <div
+                                    className="tag-action-menu"
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
                                     <button
                                       type="button"
                                       className="tag-action-item"
