@@ -283,6 +283,13 @@ select {
   right: 10px;
 }
 
+.post-meta-badge.bookmark-badge {
+  right: 10px;
+  top: 38px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
 .post-footer {
   position: absolute;
   inset-inline: 10px;

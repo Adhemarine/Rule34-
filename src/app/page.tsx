@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { ExternalPost } from '@/lib/normalize-external-posts'
 
@@ -19,6 +19,7 @@ type TagSection = {
 
 const PAGE_SIZE = 100
 const BLOCKLIST_STORAGE_KEY = 'rule34-plus-blocked-tags'
+const BOOKMARKS_STORAGE_KEY = 'rule34-plus-bookmarks'
 const VIDEO_URL_PATTERN = /\.(mp4|webm|m4v|mov)(?:[?#].*)?$/i
 const VIDEO_HOST_PATTERN = /api-cdn-mp4\.rule34\./i
 
@@ -135,7 +136,7 @@ function isVideoUrl(url: string | null | undefined): boolean {
   return VIDEO_URL_PATTERN.test(url) || VIDEO_HOST_PATTERN.test(url)
 }
 
-export default function Page() {
+function HomePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const currentQueryString = searchParams.toString()
@@ -157,15 +158,28 @@ export default function Page() {
   const [selectedPost, setSelectedPost] = useState<ExternalPost | null>(null)
   const [activeTagMenu, setActiveTagMenu] = useState<TagMenuState>(null)
   const [blockedTags, setBlockedTags] = useState<string[]>([])
+  const [bookmarkedPosts, setBookmarkedPosts] = useState<ExternalPost[]>([])
+  const [showOnlyBookmarked, setShowOnlyBookmarked] = useState(false)
 
   const blockedTagsSet = useMemo(() => new Set(blockedTags), [blockedTags])
+  const bookmarkedIds = useMemo(
+    () => new Set(bookmarkedPosts.map((post) => post.id)),
+    [bookmarkedPosts],
+  )
 
   const visiblePosts = useMemo(
-    () =>
-      posts.filter((post) =>
+    () => {
+      const hiddenByBlocklist = posts.filter((post) =>
         getAllTags(post).every((tag) => !blockedTagsSet.has(tag)),
-      ),
-    [posts, blockedTagsSet],
+      )
+
+      if (!showOnlyBookmarked) {
+        return hiddenByBlocklist
+      }
+
+      return hiddenByBlocklist.filter((post) => bookmarkedIds.has(post.id))
+    },
+    [posts, blockedTagsSet, showOnlyBookmarked, bookmarkedIds],
   )
 
   useEffect(() => {
@@ -232,6 +246,52 @@ export default function Page() {
       JSON.stringify(blockedTags),
     )
   }, [blockedTags])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      const stored = window.localStorage.getItem(BOOKMARKS_STORAGE_KEY)
+
+      if (!stored) {
+        return
+      }
+
+      const parsed = JSON.parse(stored)
+
+      if (!Array.isArray(parsed)) {
+        return
+      }
+
+      setBookmarkedPosts(
+        parsed.filter((value): value is ExternalPost => {
+          return (
+            typeof value === 'object' &&
+            value !== null &&
+            typeof (value as ExternalPost).id === 'number' &&
+            typeof (value as ExternalPost).title === 'string' &&
+            typeof (value as ExternalPost).image_url === 'string' &&
+            typeof (value as ExternalPost).download_url === 'string'
+          )
+        }),
+      )
+    } catch (storageError) {
+      console.error(storageError)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    window.localStorage.setItem(
+      BOOKMARKS_STORAGE_KEY,
+      JSON.stringify(bookmarkedPosts),
+    )
+  }, [bookmarkedPosts])
 
   useEffect(() => {
     let cancelled = false
@@ -404,6 +464,33 @@ export default function Page() {
     setBlockedTags((current) => current.filter((value) => value !== tag))
   }
 
+  function handleToggleBookmark(post: ExternalPost) {
+    setBookmarkedPosts((current) => {
+      const exists = current.some((value) => value.id === post.id)
+
+      if (exists) {
+        return current.filter((value) => value.id !== post.id)
+      }
+
+      return [post, ...current]
+    })
+  }
+
+  function handleOpenBookmarkedPost(postId: number) {
+    const fromCurrentPage = posts.find((post) => post.id === postId)
+
+    if (fromCurrentPage) {
+      setSelectedPost(fromCurrentPage)
+      return
+    }
+
+    const fromBookmarks = bookmarkedPosts.find((post) => post.id === postId)
+
+    if (fromBookmarks) {
+      setSelectedPost(fromBookmarks)
+    }
+  }
+
   function handleOpenTagInNewTab(tag: string) {
     const next = new URLSearchParams()
     next.set('tags', tag)
@@ -538,6 +625,39 @@ export default function Page() {
           </div>
 
           <div className="sidebar-card">
+            <h2 className="section-title">ブックマーク</h2>
+
+            <button
+              type="button"
+              className={`action-button ${showOnlyBookmarked ? 'active' : ''}`}
+              onClick={() => setShowOnlyBookmarked((current) => !current)}
+            >
+              {showOnlyBookmarked ? '全件表示に戻す' : 'ブックマークのみ表示'}
+            </button>
+
+            <p className="side-note" style={{ marginTop: 8 }}>
+              保存件数: {bookmarkedPosts.length}
+            </p>
+
+            {bookmarkedPosts.length === 0 ? (
+              <p className="side-note">まだ保存はありません</p>
+            ) : (
+              <div className="cheatsheet-list" style={{ marginTop: 10 }}>
+                {bookmarkedPosts.slice(0, 8).map((post) => (
+                  <button
+                    key={post.id}
+                    type="button"
+                    className="cheatsheet-item"
+                    onClick={() => handleOpenBookmarkedPost(post.id)}
+                  >
+                    #{post.id} {post.work_name ?? post.title}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="sidebar-card">
             <h2 className="section-title">ページ送り確認点</h2>
             <p className="side-note">
               1ページ100件です。前へは pid が 1 以上で有効になります。次へは取得件数が100件ちょうどのときだけ有効にしています。
@@ -623,6 +743,22 @@ export default function Page() {
 
                   <span className="post-meta-badge right">★ {post.score}</span>
 
+                  <button
+                    type="button"
+                    className="post-meta-badge bookmark-badge"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleToggleBookmark(post)
+                    }}
+                    aria-label={
+                      bookmarkedIds.has(post.id)
+                        ? 'ブックマーク解除'
+                        : 'ブックマーク保存'
+                    }
+                  >
+                    {bookmarkedIds.has(post.id) ? '★ 保存済み' : '☆ 保存'}
+                  </button>
+
                   <div className="post-footer">
                     <span>{post.work_name ?? post.title}</span>
                     <span>{getResolutionText(post)}</span>
@@ -682,6 +818,16 @@ export default function Page() {
                     元URL
                   </a>
                 ) : null}
+
+                <button
+                  type="button"
+                  className="action-button"
+                  onClick={() => handleToggleBookmark(selectedPost)}
+                >
+                  {bookmarkedIds.has(selectedPost.id)
+                    ? 'ブックマーク解除'
+                    : 'ブックマーク保存'}
+                </button>
 
                 <button
                   type="button"
@@ -837,5 +983,13 @@ export default function Page() {
         </div>
       ) : null}
     </div>
+  )
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="notice">読み込み中です。</div>}>
+      <HomePageContent />
+    </Suspense>
   )
 }
