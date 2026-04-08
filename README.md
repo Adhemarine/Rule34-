@@ -24,6 +24,22 @@ npm run dev
 
 そのあと、ブラウザで `http://localhost:3000` を開きます。
 
+### Windows で `npm run build` が `ENOENT` になる場合
+
+`npm error path C:\\Users\\<ユーザー名>\\package.json` のようなエラーは、  
+**プロジェクトフォルダではない場所でコマンドを実行している**ときに出ます。
+
+必ず `package.json` があるフォルダ（このリポジトリ直下）へ移動してから実行してください。
+
+```powershell
+# 例: ダウンロード先に合わせて変更
+cd C:\path\to\Rule34-
+npm install
+npm run build
+```
+
+`dir package.json` でファイルが見える状態なら OK です。
+
 ## Supabase をつなぐ時
 
 1. `.env.example` をコピーして `.env.local` を作る
