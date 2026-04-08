@@ -31,14 +31,35 @@ npm run dev
 
 必ず `package.json` があるフォルダ（このリポジトリ直下）へ移動してから実行してください。
 
+> `C:\path\to\Rule34-` は **サンプル** です。  
+> そのまま貼り付けると「指定されたパスが見つかりません」になります。
+
 ```powershell
-# 例: ダウンロード先に合わせて変更
-cd C:\path\to\Rule34-
+# 1) まずフォルダを探す（見つかった場所に移動する）
+Get-ChildItem C:\Users\$env:USERNAME -Directory -Recurse -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -eq "Rule34-" } |
+  Select-Object -First 3 FullName
+
+# 2) 上で出た実際のパスに cd する（例）
+cd "C:\Users\<ユーザー名>\Downloads\Rule34-"
+
+# 3) package.json が見えることを確認
+dir package.json
+
+# 4) 依存関係インストールとビルド
 npm install
 npm run build
 ```
 
-`dir package.json` でファイルが見える状態なら OK です。
+もし `Rule34-` フォルダ自体が見つからない場合は、先にクローンしてください。
+
+```powershell
+cd "C:\Users\<ユーザー名>\Downloads"
+git clone <このリポジトリURL> Rule34-
+cd .\Rule34-
+npm install
+npm run build
+```
 
 ## Supabase をつなぐ時
 
