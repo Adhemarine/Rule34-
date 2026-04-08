@@ -24,6 +24,43 @@ npm run dev
 
 そのあと、ブラウザで `http://localhost:3000` を開きます。
 
+### Windows で `npm run build` が `ENOENT` になる場合
+
+`npm error path C:\\Users\\<ユーザー名>\\package.json` のようなエラーは、  
+**プロジェクトフォルダではない場所でコマンドを実行している**ときに出ます。
+
+必ず `package.json` があるフォルダ（このリポジトリ直下）へ移動してから実行してください。
+
+> `C:\path\to\Rule34-` は **サンプル** です。  
+> そのまま貼り付けると「指定されたパスが見つかりません」になります。
+
+```powershell
+# 1) まずフォルダを探す（見つかった場所に移動する）
+Get-ChildItem C:\Users\$env:USERNAME -Directory -Recurse -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -eq "Rule34-" } |
+  Select-Object -First 3 FullName
+
+# 2) 上で出た実際のパスに cd する（例）
+cd "C:\Users\<ユーザー名>\Downloads\Rule34-"
+
+# 3) package.json が見えることを確認
+dir package.json
+
+# 4) 依存関係インストールとビルド
+npm install
+npm run build
+```
+
+もし `Rule34-` フォルダ自体が見つからない場合は、先にクローンしてください。
+
+```powershell
+cd "C:\Users\<ユーザー名>\Downloads"
+git clone <このリポジトリURL> Rule34-
+cd .\Rule34-
+npm install
+npm run build
+```
+
 ## Supabase をつなぐ時
 
 1. `.env.example` をコピーして `.env.local` を作る
